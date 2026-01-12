@@ -14,34 +14,58 @@ type socket struct {
 	port  string
 }
 
+type InterfaceInfo struct {
+	Name string
+	IPv4 []string
+	Ipv6 []string
+}
+
 func getInterfacesInfo() {
 	interfaces, err := net.Interfaces()
-	//	addresses, err := net.InterfaceAddrs()
 	if err != nil {
 		log.Fatal(err)
 	}
 	//	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	var interfaceInfoMap = make(map[string]string)
+	// fmt.Fprintf(w, "Interface: %-10s\t \tMAC Address: %s\tIP address: \n", iface.Name, iface.HardwareAdd r.String())
+	//w.Flush()
+
+	interfaceInfoMap := []map[string]string{}
 
 	for _, iface := range interfaces[1:] {
-		//		addr, err :=iface.Addrs()
-		//		if err != nil {
+		m := make(map[string]string)
+		m["Name"] = iface.Name
+		m["MAC"] = iface.HardwareAddr.String()
+		interfaceInfoMap = append(interfaceInfoMap, m)
+		addrs, err := iface.Addrs()
+		if err != nil {
+			log.Fatal(err)
+		}
+		for _, addr := range addrs {
+			ipNet, ok := addr.(*net.IPNet)
+			if !ok {
+				continue
+			}
 
-		//		}
-		interfaceInfoMap["Interface name"] = iface.Name
-		interfaceInfoMap["Interface MAC address"] = iface.HardwareAddr.String()
-		interfaceInfoMap["Interface IP address"] = ""
+			ip := ipNet.IP
+			if ip.To4() != nil {
+				m["IPv4"] = ip.String()
 
-		//fmt.Fprintf(w, "Interface: %-10s\t \tMAC Address: %s\tIP address: \n", iface.Name, iface.HardwareAddr.String())
-		//w.Flush()
+			} else {
+				m["IPv6"] = ip.String()
+			}
+
+		}
 
 	}
-	fmt.Println(interfaceInfoMap)
-
-}
-
-func main() {
-	checkHost()
+	for _, iface := range interfaceInfoMap {
+		fmt.Printf(
+			"Name: %10s MAC: %10s IPv4: %s IPv6: %s\n",
+			iface["Name"],
+			iface["MAC"],
+			iface["IPv4"],
+			iface["IPv6"],
+		)
+	}
 }
 
 func checkHost() {
@@ -57,4 +81,8 @@ func checkHost() {
 	address := s.iface + ":" + s.port
 	fmt.Println("\nHost is listening on interface:port --> ", address)
 
+}
+
+func main() {
+	checkHost()
 }
