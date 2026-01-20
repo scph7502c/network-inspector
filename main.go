@@ -5,8 +5,7 @@ import (
 	"log"
 	"net"
 	"os"
-	//	"strconv"
-	//	"text/tabwriter"
+	"strings"
 )
 
 type socket struct {
@@ -16,61 +15,86 @@ type socket struct {
 
 type InterfaceInfo struct {
 	Name string
+	MAC  string
 	IPv4 []string
-	Ipv6 []string
+	IPv6 []string
 }
 
-func getInterfacesInfo() {
+func collectInterfacesInfo() ([]InterfaceInfo, error) {
+	var result []InterfaceInfo
+
 	interfaces, err := net.Interfaces()
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
-	//	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	// fmt.Fprintf(w, "Interface: %-10s\t \tMAC Address: %s\tIP address: \n", iface.Name, iface.HardwareAdd r.String())
-	//w.Flush()
-
-	interfaceInfoMap := []map[string]string{}
 
 	for _, iface := range interfaces[1:] {
-		m := make(map[string]string)
-		m["Name"] = iface.Name
-		m["MAC"] = iface.HardwareAddr.String()
-		interfaceInfoMap = append(interfaceInfoMap, m)
+		info := InterfaceInfo{
+			Name: iface.Name,
+			MAC:  iface.HardwareAddr.String(),
+		}
+
 		addrs, err := iface.Addrs()
 		if err != nil {
-			log.Fatal(err)
-		}
-		for _, addr := range addrs {
-			ipNet, ok := addr.(*net.IPNet)
-			if !ok {
-				continue
-			}
-
-			ip := ipNet.IP
-			if ip.To4() != nil {
-				m["IPv4"] = ip.String()
-
-			} else {
-				m["IPv6"] = ip.String()
-			}
-
+			return nil, err
 		}
 
+		info.IPv4, info.IPv6 = parseIPAddresses(addrs)
+		result = append(result, info)
 	}
-	for _, iface := range interfaceInfoMap {
+
+	return result, nil
+}
+
+func parseIPAddresses(addrs []net.Addr) (ipv4 []string, ipv6 []string) {
+	for _, addr := range addrs {
+		ipNet, ok := addr.(*net.IPNet)
+		if !ok {
+			continue
+		}
+
+		ip := ipNet.IP
+		if ip4 := ip.To4(); ip4 != nil {
+			ipv4 = append(ipv4, ip4.String())
+		} else {
+			ipv6 = append(ipv6, ip.String())
+		}
+	}
+	return
+}
+
+func printInterfaces(ifaces []InterfaceInfo) {
+	for _, iface := range ifaces {
+		ipv4 := "-"
+		if len(iface.IPv4) > 0 {
+			ipv4 = strings.Join(iface.IPv4, ", ")
+		}
+
+		ipv6 := "-"
+		if len(iface.IPv6) > 0 {
+			ipv6 = strings.Join(iface.IPv6, ", ")
+		}
+
 		fmt.Printf(
-			"Name: %10s MAC: %10s IPv4: %s IPv6: %s\n",
-			iface["Name"],
-			iface["MAC"],
-			iface["IPv4"],
-			iface["IPv6"],
+			"Name: %20s || MAC: %20s || IPv4: %20s || IPv6: %20s\n",
+			iface.Name,
+			iface.MAC,
+			ipv4,
+			ipv6,
 		)
 	}
 }
 
+func getInterfacesInfo() {
+	ifaces, err := collectInterfacesInfo()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	printInterfaces(ifaces)
+}
+
 func checkHost() {
-	//	defer c.Close()
-	getInterfacesInfo()
 	arguments := os.Args
 	if len(arguments) != 3 {
 		log.Fatalf("Usage: <ip> <port>", arguments[0])
@@ -84,5 +108,5 @@ func checkHost() {
 }
 
 func main() {
-	checkHost()
+	getInterfacesInfo()
 }
