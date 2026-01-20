@@ -1,2 +1,1 @@
-Server monitor written in Golang
-Work in progress...
+Server monitor written in Golang: work in progress

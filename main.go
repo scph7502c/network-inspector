@@ -20,6 +20,18 @@ type InterfaceInfo struct {
 	IPv6 []string
 }
 
+func checkHost() {
+	arguments := os.Args
+	if len(arguments) != 3 {
+		log.Fatalf("Usage: <ip> <port>", arguments[0])
+	}
+	s := socket{}
+	s.iface = arguments[1]
+	s.port = arguments[2]
+	address := s.iface + ":" + s.port
+	fmt.Println("\nHost is listening on interface:port --> ", address)
+}
+
 func collectInterfacesInfo() ([]InterfaceInfo, error) {
 	var result []InterfaceInfo
 
@@ -92,19 +104,6 @@ func getInterfacesInfo() {
 	}
 
 	printInterfaces(ifaces)
-}
-
-func checkHost() {
-	arguments := os.Args
-	if len(arguments) != 3 {
-		log.Fatalf("Usage: <ip> <port>", arguments[0])
-	}
-	s := socket{}
-	s.iface = arguments[1]
-	s.port = arguments[2]
-	address := s.iface + ":" + s.port
-	fmt.Println("\nHost is listening on interface:port --> ", address)
-
 }
 
 func main() {
