@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	//	"github.com/jsimonetti/rtnetlink"
+	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 	"log"
 	"net"
 	"os"
@@ -106,6 +109,44 @@ func getInterfacesInfo() {
 	printInterfaces(ifaces)
 }
 
+func openNetlinkSocket() {
+	sock, err := unix.Socket(unix.AF_NETLINK, unix.SOCK_RAW, unix.NETLINK_ROUTE)
+	if err != nil {
+		fmt.Printf("Error creating socket: %s\n", err)
+		return
+	}
+	defer unix.Close(sock)
+
+	err = unix.Bind(sock, &unix.SockaddrNetlink{
+		Family: unix.AF_NETLINK,
+		Groups: 0,
+		Pid:    0,
+	})
+	if err != nil {
+		fmt.Printf("Socket binding error: %s\n", err)
+		return
+	}
+
+}
+
+func lisInterfacesByNetlink() {
+	links, err := netlink.LinkList()
+	if err != nil {
+		log.Fatal("Can't fetch interface list: %v", err)
+	}
+	fmt.Println("The following interfaces were found:")
+	for _, link := range links {
+		attrs := link.Attrs()
+		state := "DOWN"
+		if attrs.Flags&net.FlagUp != 0 {
+			state = "UP"
+		}
+		fmt.Printf("\n- Name: %-10s | Index: %-3d | State: %-5s | MTU: %d\n", attrs.Name, attrs.Index, state, attrs.MTU)
+	}
+}
+
 func main() {
 	getInterfacesInfo()
+	// listRoutes()
+	lisInterfacesByNetlink()
 }
