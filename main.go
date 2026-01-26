@@ -2,13 +2,10 @@ package main
 
 import (
 	"fmt"
-	//	"github.com/jsimonetti/rtnetlink"
-	"github.com/vishvananda/netlink"
-	"golang.org/x/sys/unix"
 	"log"
 	"net"
-	"os"
-	"strings"
+
+	"github.com/vishvananda/netlink"
 )
 
 type socket struct {
@@ -23,130 +20,68 @@ type InterfaceInfo struct {
 	IPv6 []string
 }
 
-func checkHost() {
-	arguments := os.Args
-	if len(arguments) != 3 {
-		log.Fatalf("Usage: <ip> <port>", arguments[0])
+func fetchRoutes() ([]netlink.Route, error) {
+	var allRoutes []netlink.Route
+
+	routesV4, errV4 := netlink.RouteList(nil, netlink.FAMILY_V4)
+	if errV4 == nil {
+		allRoutes = append(allRoutes, routesV4...)
 	}
-	s := socket{}
-	s.iface = arguments[1]
-	s.port = arguments[2]
-	address := s.iface + ":" + s.port
-	fmt.Println("\nHost is listening on interface:port --> ", address)
-}
-
-func collectInterfacesInfo() ([]InterfaceInfo, error) {
-	var result []InterfaceInfo
-
-	interfaces, err := net.Interfaces()
-	if err != nil {
-		return nil, err
+	routesV6, errV6 := netlink.RouteList(nil, netlink.FAMILY_V6)
+	if errV6 == nil {
+		allRoutes = append(allRoutes, routesV6...)
 	}
 
-	for _, iface := range interfaces[1:] {
-		info := InterfaceInfo{
-			Name: iface.Name,
-			MAC:  iface.HardwareAddr.String(),
-		}
-
-		addrs, err := iface.Addrs()
-		if err != nil {
-			return nil, err
-		}
-
-		info.IPv4, info.IPv6 = parseIPAddresses(addrs)
-		result = append(result, info)
+	if errV4 != nil && errV6 != nil {
+		return nil, fmt.Errorf("cannot fetch IPv4 nor IPv6 routes")
 	}
-
-	return result, nil
-}
-
-func parseIPAddresses(addrs []net.Addr) (ipv4 []string, ipv6 []string) {
-	for _, addr := range addrs {
-		ipNet, ok := addr.(*net.IPNet)
-		if !ok {
-			continue
-		}
-
-		ip := ipNet.IP
-		if ip4 := ip.To4(); ip4 != nil {
-			ipv4 = append(ipv4, ip4.String())
-		} else {
-			ipv6 = append(ipv6, ip.String())
-		}
-	}
-	return
-}
-
-func printInterfaces(ifaces []InterfaceInfo) {
-	for _, iface := range ifaces {
-		ipv4 := "-"
-		if len(iface.IPv4) > 0 {
-			ipv4 = strings.Join(iface.IPv4, ", ")
-		}
-
-		ipv6 := "-"
-		if len(iface.IPv6) > 0 {
-			ipv6 = strings.Join(iface.IPv6, ", ")
-		}
-
-		fmt.Printf(
-			"Name: %20s || MAC: %20s || IPv4: %20s || IPv6: %20s\n",
-			iface.Name,
-			iface.MAC,
-			ipv4,
-			ipv6,
-		)
-	}
-}
-
-func getInterfacesInfo() {
-	ifaces, err := collectInterfacesInfo()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	printInterfaces(ifaces)
-}
-
-func openNetlinkSocket() {
-	sock, err := unix.Socket(unix.AF_NETLINK, unix.SOCK_RAW, unix.NETLINK_ROUTE)
-	if err != nil {
-		fmt.Printf("Error creating socket: %s\n", err)
-		return
-	}
-	defer unix.Close(sock)
-
-	err = unix.Bind(sock, &unix.SockaddrNetlink{
-		Family: unix.AF_NETLINK,
-		Groups: 0,
-		Pid:    0,
-	})
-	if err != nil {
-		fmt.Printf("Socket binding error: %s\n", err)
-		return
-	}
+	return allRoutes, nil
 
 }
 
-func lisInterfacesByNetlink() {
+func groupRoutesByLink(routes []netlink.Route) (map[int][]netlink.Route, error) {
+
+	routesByLink := make(map[int][]netlink.Route)
+	for _, route := range routes {
+		routesByLink[route.LinkIndex] = append(routesByLink[route.LinkIndex], route)
+	}
+
+	return routesByLink, nil
+
+}
+
+func listInterfacesByNetlink() {
 	links, err := netlink.LinkList()
 	if err != nil {
-		log.Fatal("Can't fetch interface list: %v", err)
+		fmt.Printf("Can't fetch interface list: %v", err)
 	}
-	fmt.Println("The following interfaces were found:")
 	for _, link := range links {
+		if err != nil {
+			fmt.Printf("Error reading route table: %v", err)
+		}
 		attrs := link.Attrs()
 		state := "DOWN"
 		if attrs.Flags&net.FlagUp != 0 {
 			state = "UP"
 		}
-		fmt.Printf("\n- Name: %-10s | Index: %-3d | State: %-5s | MTU: %d\n", attrs.Name, attrs.Index, state, attrs.MTU)
+
+		fmt.Printf("\n- Name: %-10s | Index: %-3d | State: %-5s | MTU: %d | MAC: %s\n",
+			attrs.Name,
+			attrs.Index,
+			state,
+			attrs.MTU,
+			attrs.HardwareAddr.String(),
+		)
+		if routes, ok := routesByLink[attrs.Index]; ok {
+			for _, r := range routes {
+				fmt.Printf("    Route: dst=%v gw=%v src=%v\n", r.Dst, r.Gw, r.Src)
+			}
+		} else {
+			fmt.Println("    (no routes)")
+		}
 	}
 }
 
 func main() {
-	getInterfacesInfo()
-	// listRoutes()
-	lisInterfacesByNetlink()
+	listInterfacesByNetlink()
 }
